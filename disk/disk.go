@@ -13,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/diskfs/go-diskfs/filesystem"
+	"github.com/diskfs/go-diskfs/filesystem/ext4"
 	"github.com/diskfs/go-diskfs/filesystem/fat32"
 	"github.com/diskfs/go-diskfs/filesystem/iso9660"
 	"github.com/diskfs/go-diskfs/filesystem/squashfs"
@@ -222,6 +223,12 @@ func (d *Disk) GetFilesystem(partition int) (filesystem.FileSystem, error) {
 	}
 
 	// just try each type
+	log.Debug("trying ext4")
+	ext4FS, err := ext4.Read(d.File, size, start, d.LogicalBlocksize)
+	if err == nil {
+		return ext4FS, nil
+	}
+
 	log.Debug("trying fat32")
 	fat32FS, err := fat32.Read(d.File, size, start, d.LogicalBlocksize)
 	if err == nil {
