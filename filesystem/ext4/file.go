@@ -1,8 +1,8 @@
 package ext4
 
 import (
-	"io"
 	"fmt"
+	"io"
 	"log"
 )
 
@@ -11,9 +11,9 @@ type File struct {
 }
 
 type extFile struct {
-	fs *FileSystem
+	fs    *FileSystem
 	inode *Inode
-	pos int64
+	pos   int64
 }
 
 func (f *File) Read(p []byte) (n int, err error) {
@@ -24,7 +24,7 @@ func (f *File) Read(p []byte) (n int, err error) {
 	offset := int64(0)
 
 	//log.Println("Read", len, f.pos, f.inode.GetSize())
-	if len + f.pos > int64(f.inode.GetSize()) {
+	if len+f.pos > int64(f.inode.GetSize()) {
 		len = int64(f.inode.GetSize()) - f.pos
 	}
 
@@ -35,13 +35,16 @@ func (f *File) Read(p []byte) (n int, err error) {
 
 	for len > 0 {
 		blockPtr, contiguousBlocks, found := f.inode.GetBlockPtr(blockNum)
+		log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
+			blockPtr, contiguousBlocks, found, blockNum)
+
 		if !found {
 			return int(offset), io.ErrUnexpectedEOF
 		}
 
-		f.fs.dev.Seek(blockPtr * f.fs.sb.GetBlockSize() + blockPos, 0)
+		f.fs.dev.Seek(f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, 0)
 
-		blockReadLen := contiguousBlocks * f.fs.sb.GetBlockSize() - blockPos
+		blockReadLen := contiguousBlocks*f.fs.sb.GetBlockSize() - blockPos
 		if blockReadLen > len {
 			blockReadLen = len
 		}
@@ -72,6 +75,8 @@ func (f *File) Write(p []byte) (n int, err error) {
 		//log.Println("Doing write", f.pos, blockNum, blockPos)
 
 		blockPtr, contiguousBlocks, found := f.inode.GetBlockPtr(blockNum)
+		log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
+			blockPtr, contiguousBlocks, found, blockNum)
 
 		if !found {
 			//log.Println("Not found, extending")
@@ -79,7 +84,7 @@ func (f *File) Write(p []byte) (n int, err error) {
 		}
 
 		//log.Println(blockNum, blockPos, blockPtr, contiguousBlocks, len(p))
-		writable := contiguousBlocks * f.fs.sb.GetBlockSize() - blockPos
+		writable := contiguousBlocks*f.fs.sb.GetBlockSize() - blockPos
 
 		if writable == 0 {
 			log.Fatalf("panic")
@@ -90,9 +95,14 @@ func (f *File) Write(p []byte) (n int, err error) {
 		}
 
 		f.pos += writable
-		//log.Println("seek", blockPtr * f.fs.sb.GetBlockSize() + blockPos, "write", writable)
-		f.fs.dev.Seek(blockPtr * f.fs.sb.GetBlockSize() + blockPos, 0)
-		f.fs.dev.Write(p[:writable])
+
+		log.Println("seek", f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, "write", writable)
+		f.fs.dev.Seek(f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, 0)
+		n, err := f.fs.dev.Write(p[:writable])
+		if err != nil {
+			log.Println("write return n:", n, ", err:", err)
+			//return n, err
+		}
 		p = p[writable:]
 	}
 

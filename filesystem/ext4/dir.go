@@ -28,7 +28,7 @@ func (dir *directory) AddEntry(entry *DirectoryEntry2) error {
 	entrySize, _ := struc.Sizeof(entry)
 	entry.Rec_len = uint16(entrySize)
 
-	pos, _ := dir.f.Seek(0, 2)
+	pos, _ := dir.f.Seek(0, 2)   //the position of the end of the directory
 	if pos % dir.sb.GetBlockSize() != 0 {
 		return fmt.Errorf("Unexpected size of directory file: %d", pos)
 	} else if pos == 0 {

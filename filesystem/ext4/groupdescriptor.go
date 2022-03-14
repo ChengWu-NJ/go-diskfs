@@ -59,6 +59,10 @@ func (bgd *GroupDescriptor) GetBlockBitmapLoc() int64 {
 }
 
 func (bgd *GroupDescriptor) UpdateCsumAndWriteback() {
+	if bgd.fs.sb.Checksum_type == 0 {
+		return
+	}
+
 	cs := NewChecksummer(bgd.fs.sb)
 
 	cs.Write(bgd.fs.sb.Uuid[:])
@@ -67,13 +71,13 @@ func (bgd *GroupDescriptor) UpdateCsumAndWriteback() {
 	struc.Pack(cs, bgd)
 	bgd.Checksum = uint16(cs.Get() & 0xFFFF)
 
-	bgd.fs.dev.Seek(bgd.address, 0)
+	bgd.fs.dev.Seek(bgd.fs.start + bgd.address, 0)
 	struc.Pack(bgd.fs.dev, bgd)
 }
 
 func(bgd *GroupDescriptor) GetFreeInode() *Inode {
 	start := bgd.GetInodeBitmapLoc() * bgd.fs.sb.GetBlockSize()
-	bgd.fs.dev.Seek(start, 0)
+	bgd.fs.dev.Seek(bgd.fs.start + start, 0)
 
 	subInodeNum := int64(-1)
 
@@ -109,7 +113,7 @@ func(bgd *GroupDescriptor) GetFreeInode() *Inode {
 	}
 
 	if bgd.Flags & BG_INODE_ZEROED == 0 {
-		bgd.fs.dev.Seek(bgd.GetInodeTableLoc() * bgd.fs.sb.GetBlockSize(), 0)
+		bgd.fs.dev.Seek(bgd.fs.start + bgd.GetInodeTableLoc() * bgd.fs.sb.GetBlockSize(), 0)
 		bgd.fs.dev.Write(make([]byte, int64(bgd.fs.sb.InodePer_group) / int64(bgd.fs.sb.Inode_size)))
 		bgd.Flags |= BG_INODE_ZEROED
 		bgd.UpdateCsumAndWriteback()
@@ -118,7 +122,7 @@ func(bgd *GroupDescriptor) GetFreeInode() *Inode {
 	// Update inode bitmap checksum
 	checksummer := NewChecksummer(bgd.fs.sb)
 	checksummer.Write(bgd.fs.sb.Uuid[:])
-	bgd.fs.dev.Seek(start, 0)
+	bgd.fs.dev.Seek(bgd.fs.start + start, 0)
 	b := make([]byte, int64(bgd.fs.sb.InodePer_group) / 8)
 	bgd.fs.dev.Read(b)
 	checksummer.Write(b)
@@ -136,7 +140,7 @@ func(bgd *GroupDescriptor) GetFreeInode() *Inode {
 	inode := &Inode{
 		Mode: 0,
 		Links_count: 1,
-		Flags: 524288, //TODO: what
+		Flags: EXTENTS_FL, //0x80000//524288, InodeFlagExtents
 		BlockOrExtents: [60]byte{0x0a, 0xf3, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00},
 		fs: bgd.fs,
 		address: bgd.GetInodeTableLoc() * bgd.fs.sb.GetBlockSize() + subInodeNum * int64(bgd.fs.sb.Inode_size),
@@ -155,7 +159,7 @@ func (bgd *GroupDescriptor) setBitRange(offset int64, start int64, n int64) {
 	n = (n + bgd.fs.sb.GetBlockSize() - 1) / bgd.fs.sb.GetBlockSize()
 	for i := start; i < start + n; i++ {
 		b := make([]byte, 1)
-		bgd.fs.dev.Seek(offset + i / 8, 0)
+		bgd.fs.dev.Seek(bgd.fs.start + offset + i / 8, 0)
 		bgd.fs.dev.Read(b)
 		b[0] |= 1 << uint(i % 8)
 		bgd.fs.dev.Seek(-1, 1)
@@ -169,12 +173,13 @@ func (bgd *GroupDescriptor) GetFreeBlocks(n int64) (int64, int64) {
 	start := bgd.GetBlockBitmapLoc() * bgd.fs.sb.GetBlockSize()
 
 	if bgd.Flags & BG_BLOCK_UNINIT != 0 {
-		bgd.fs.dev.Seek(start, 0)
+		bgd.fs.dev.Seek(bgd.fs.start + start, 0)
 		bgd.fs.dev.Write(make([]byte, bgd.fs.sb.BlockPer_group/8))
 		bgd.Free_blocks_count_lo = uint16(bgd.fs.sb.BlockPer_group)
 
+		numBlockGroups := bgd.fs.sb.BlockGroupCount()
 		if !bgd.fs.sb.FeatureRoCompatSparse_super() || bgd.num <= 1 || bgd.num % 3 == 0 || bgd.num % 5 == 0 || bgd.num % 7 == 0 {
-			bgd.setBitRange(start, 0, bgd.fs.sb.GetBlockSize()+(bgd.fs.sb.numBlockGroups*32)+int64(bgd.fs.sb.Reserved_gdt_blocks)*bgd.fs.sb.GetBlockSize())
+			bgd.setBitRange(start, 0, bgd.fs.sb.GetBlockSize()+(numBlockGroups*32)+int64(bgd.fs.sb.Reserved_gdt_blocks)*bgd.fs.sb.GetBlockSize())
 		}
 		bgd.setBitRange(start, bgd.GetInodeBitmapLoc() - bgd.num * int64(bgd.fs.sb.BlockPer_group) * bgd.fs.sb.GetBlockSize(), int64(bgd.fs.sb.InodePer_group)/8)
 		bgd.setBitRange(start, bgd.GetBlockBitmapLoc() - bgd.num * int64(bgd.fs.sb.BlockPer_group) * bgd.fs.sb.GetBlockSize(), int64(bgd.fs.sb.BlockPer_group)/8)
@@ -182,7 +187,7 @@ func (bgd *GroupDescriptor) GetFreeBlocks(n int64) (int64, int64) {
 		bgd.UpdateCsumAndWriteback()
 
 		blocksFree := int64(0)
-		for i := int64(0); i < bgd.fs.sb.numBlockGroups; i++ {
+		for i := int64(0); i < numBlockGroups; i++ {
 			blocksFree += int64(bgd.fs.getBlockGroupDescriptor(i).Free_blocks_count_lo)
 		}
 
@@ -194,7 +199,7 @@ func (bgd *GroupDescriptor) GetFreeBlocks(n int64) (int64, int64) {
 	}
 
 	subBlockNum := int64(-1)
-	bgd.fs.dev.Seek(start, 0)
+	bgd.fs.dev.Seek(bgd.fs.start + start, 0)
 	for i := 0; i < int(bgd.fs.sb.BlockPer_group/8); i++ {
 		b := make([]byte, 1)
 		bgd.fs.dev.Read(b)
@@ -221,7 +226,7 @@ func (bgd *GroupDescriptor) GetFreeBlocks(n int64) (int64, int64) {
 	// Update block bitmap checksum
 	checksummer := NewChecksummer(bgd.fs.sb)
 	checksummer.Write(bgd.fs.sb.Uuid[:])
-	bgd.fs.dev.Seek(start, 0)
+	bgd.fs.dev.Seek(bgd.fs.start + start, 0)
 	b := make([]byte, int64(bgd.fs.sb.ClusterPer_group) / 8)
 	bgd.fs.dev.Read(b)
 	checksummer.Write(b)

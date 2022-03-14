@@ -38,5 +38,8 @@ func (cs *checksummer) WriteUint32(x uint32) {
 }
 
 func (cs *checksummer) Get() uint32 {
+	if cs.sb.Checksum_type == 0 {
+		return 0
+	}
 	return ^cs.val
 }

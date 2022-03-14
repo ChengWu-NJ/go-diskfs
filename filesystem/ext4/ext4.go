@@ -25,16 +25,20 @@ func Read(file util.File, size int64, start int64, blocksize int64) (*FileSystem
 		err  error
 	)
 
-	_, err = file.Seek(start+Superblock0Offset, io.SeekStart)
+	_, err = file.Seek(start + Superblock0Offset, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
 
-	sb := &Superblock{}
+	sb := &Superblock{
+		address: Superblock0Offset,
+	}
 	err = struc.Unpack(file, sb)
 	if err != nil {
 		return nil, err
 	}
+
+	//sb.numBlockGroups = sb.BlockGroupCount()
 
 	fs := &FileSystem{
 		sb: sb,
@@ -134,8 +138,8 @@ func (fs *FileSystem) OpenFile(p string, flag int) (filesystem.File, error) {
 	}
 
 	newFile := fs.CreateNewFile(0777)
-	log.Printf("Creating new file with inode %d and perms %d", newFile.inode.num, newFile.inode.Mode)
-	newFile.inode.Mode |= 0x8000
+	log.Printf("Creating new file with inode %d and perms %x", newFile.inode.num, newFile.inode.Mode)
+	newFile.inode.Mode |= 0x8000   //const EXTENTS_FL = 0x00080000
 	newFile.inode.UpdateCsumAndWriteback()
 
 	NewDirectory(inode).AddEntry(&DirectoryEntry2{
@@ -423,6 +427,10 @@ func (fs *FileSystem) getInode(inodeAddress int64) *Inode {
 	return inode
 }
 
+func (fs *FileSystem) GetBlockGroupDescriptor(blockGroupNum int64) *GroupDescriptor {
+	return fs.getBlockGroupDescriptor(blockGroupNum)
+}
+
 func (fs *FileSystem) getBlockGroupDescriptor(blockGroupNum int64) *GroupDescriptor {
 	blockSize := fs.sb.GetBlockSize()
 	bgdtLocation := 1024/blockSize + 1
@@ -445,7 +453,9 @@ func (fs *FileSystem) getBlockGroupDescriptor(blockGroupNum int64) *GroupDescrip
 
 func (fs *FileSystem) CreateNewFile(perm os.FileMode) *File {
 	var inode *Inode
-	for i := int64(0); i < fs.sb.numBlockGroups; i++ {
+
+	numBlockGroups := fs.sb.BlockGroupCount()
+	for i := int64(0); i < numBlockGroups; i++ {
 		bgd := fs.getBlockGroupDescriptor(i)
 		inode = bgd.GetFreeInode()
 		if inode != nil {
@@ -454,7 +464,7 @@ func (fs *FileSystem) CreateNewFile(perm os.FileMode) *File {
 	}
 
 	if inode == nil {
-		log.Fatalln("Couldn't get free inode", fs.sb.numBlockGroups, fs.sb.Free_inodeCount)
+		log.Fatalln("Couldn't get free inode with numBlockGroups:", numBlockGroups, "Free_inodeCount:", fs.sb.Free_inodeCount)
 		return nil
 	}
 
@@ -468,7 +478,9 @@ func (fs *FileSystem) CreateNewFile(perm os.FileMode) *File {
 }
 
 func (fs *FileSystem) GetFreeBlocks(n int) (int64, int64) {
-	for i := int64(0); i < fs.sb.numBlockGroups; i++ {
+	numBlockGroups := fs.sb.BlockGroupCount()
+
+	for i := int64(0); i < numBlockGroups; i++ {
 		bgd := fs.getBlockGroupDescriptor(i)
 		blockNum, numBlocks := bgd.GetFreeBlocks(int64(n))
 		if blockNum > 0 {
