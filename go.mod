@@ -9,7 +9,9 @@ require (
 	github.com/pierrec/lz4 v2.3.0+incompatible
 	github.com/pkg/xattr v0.4.1
 	github.com/sirupsen/logrus v1.7.0
+	github.com/spf13/cobra v1.4.0
 	github.com/ulikunitz/xz v0.5.10
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f
 	gopkg.in/djherbis/times.v1 v1.2.0
+	gopkg.in/yaml.v2 v2.4.0
 )

@@ -3,7 +3,6 @@ package ext4
 import (
 	"fmt"
 	"io"
-	"log"
 )
 
 type File struct {
@@ -35,8 +34,8 @@ func (f *File) Read(p []byte) (n int, err error) {
 
 	for len > 0 {
 		blockPtr, contiguousBlocks, found := f.inode.GetBlockPtr(blockNum)
-		log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
-			blockPtr, contiguousBlocks, found, blockNum)
+		//log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
+		//	blockPtr, contiguousBlocks, found, blockNum)
 
 		if !found {
 			return int(offset), io.ErrUnexpectedEOF
@@ -75,8 +74,8 @@ func (f *File) Write(p []byte) (n int, err error) {
 		//log.Println("Doing write", f.pos, blockNum, blockPos)
 
 		blockPtr, contiguousBlocks, found := f.inode.GetBlockPtr(blockNum)
-		log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
-			blockPtr, contiguousBlocks, found, blockNum)
+		//log.Printf("blockPtr[%d], contiguousBlocks[%d], found[%v] := f.inode.GetBlockPtr(blockNum[%d])\n",
+		//	blockPtr, contiguousBlocks, found, blockNum)
 
 		if !found {
 			//log.Println("Not found, extending")
@@ -87,7 +86,8 @@ func (f *File) Write(p []byte) (n int, err error) {
 		writable := contiguousBlocks*f.fs.sb.GetBlockSize() - blockPos
 
 		if writable == 0 {
-			log.Fatalf("panic")
+			//log.Fatalf("panic")
+			return 0, fmt.Errorf(`no space to write`)
 		}
 
 		if writable > int64(len(p)) {
@@ -96,12 +96,11 @@ func (f *File) Write(p []byte) (n int, err error) {
 
 		f.pos += writable
 
-		log.Println("seek", f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, "write", writable)
+		//log.Println("seek", f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, "write", writable)
 		f.fs.dev.Seek(f.fs.start+blockPtr*f.fs.sb.GetBlockSize()+blockPos, 0)
 		n, err := f.fs.dev.Write(p[:writable])
 		if err != nil {
-			log.Println("write return n:", n, ", err:", err)
-			//return n, err
+			return n, err
 		}
 		p = p[writable:]
 	}
