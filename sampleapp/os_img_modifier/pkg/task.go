@@ -133,3 +133,18 @@ func ReadFile3(fs filesystem.FileSystem, fileName string) (filesystem.File, stri
 
 	return f1, string(f1Content[:n]), nil
 }
+
+func LsDir(imageName string, pNum int, pathName string) ([]os.FileInfo, error) {
+	disk, err := godisk.Open(imageName)
+	if err != nil {
+		return nil, err
+	}
+	defer disk.File.Close()
+
+	fs, err := disk.GetFilesystem(pNum)
+	if err != nil {
+		return nil, err
+	}
+
+	return fs.ReadDir(pathName)
+}
