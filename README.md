@@ -1,4 +1,8 @@
 # go-diskfs
+
+> Update the clone from https://github.com/diskfs/go-diskfs. Add an incomplete ext4 file system to do some special tasks, such as modify OS image.       greatdolphin@gmail.com  20220315
+
+
 go-diskfs is a [go](https://golang.org) library for performing manipulation of disks, disk images and filesystems natively in go.
 
 You can do nearly everything that go-diskfs provides using shell tools like gdisk/fdisk/mkfs.vfat/mtools/sgdisk/sfdisk/dd. However, these have the following limitations:
